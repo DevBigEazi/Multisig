@@ -2,13 +2,12 @@
 pragma solidity ^0.8.24;
 
 contract MultiSig {
-    
     address[] public signers;
-    uint256 quorum;
+    uint256 public quorum;
     uint256 txCount;
 
-    address owner;
-    address nextOwner;
+    address public owner;
+    address public nextOwner;
 
     struct Transaction {
         uint256 id;
@@ -23,11 +22,11 @@ contract MultiSig {
 
     mapping(uint256 => mapping(address => bool)) hasSigned;
 
-    mapping(uint256 => Transaction) transactions;
+    mapping(uint256 => Transaction) public transactions;
 
-    mapping(address => bool) isValidSigner;
+    mapping(address => bool) public isValidSigner;
 
-    constructor(address[] memory _validSigners, uint256 _quorum) payable  {
+    constructor(address[] memory _validSigners, uint256 _quorum) payable {
         owner = msg.sender;
         signers = _validSigners;
         quorum = _quorum;

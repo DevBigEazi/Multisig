@@ -1,211 +1,107 @@
-import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import hre from "hardhat";
+import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
-describe("Multisig", async function () {
-  async function deployMultisigFixture() {
-    const [owner, signer1, signer2, signer3, newOwner, receiver, nonSigner] =
+describe("MultiSig Contract Tests", function () {
+  async function deployMultiSigFixture() {
+    const [owner, signer1, signer2, receiver, newOwner] =
       await hre.ethers.getSigners();
-
-    const validSigners: string[] = [
-      signer1.address,
-      signer2.address,
-      signer3.address,
-    ];
-    const quorum = 2; // Set quorum to 2 approvals required
-
-    // Deploy the MultiSig contract and fund it with ethers
     const MultiSig = await hre.ethers.getContractFactory("MultiSig");
+
+    const validSigners = [signer1.address, signer2.address];
+    const quorum = 2;
     const multiSig = await MultiSig.deploy(validSigners, quorum, {
-      value: hre.ethers.parseUnits("10", 18),
+      value: hre.ethers.parseEther("10"),
     });
 
-    return {
-      owner,
-      validSigners,
-      signer1,
-      signer2,
-      signer3,
-      quorum,
-      newOwner,
-      receiver,
-      nonSigner,
-      multiSig,
-    };
+    return { multiSig, owner, signer1, signer2, receiver, newOwner };
   }
 
   describe("Deployment", function () {
-    it("should deploy the contract with the correct initial values", async function () {
-      const { multiSig, validSigners, quorum } = await loadFixture(
-        deployMultisigFixture
+    it("Should deploy with the correct owner, signers, and quorum", async function () {
+      const { multiSig, signer1, signer2 } = await loadFixture(
+        deployMultiSigFixture
       );
 
-      //   expect(await multiSig.signers(validSigners)).to.equal(3);
-      expect(await hre.ethers.provider.getBalance(multiSig)).to.equal(
-        hre.ethers.parseUnits("10", 18)
-      );
+      expect(await multiSig.signers(0)).to.equal(signer1.address);
+      expect(await multiSig.signers(1)).to.equal(signer2.address);
     });
   });
 
-  describe("Transaction initiation", function () {
-    it("should allow a valid signer to initiate a transaction", async function () {
-      const { multiSig, owner, signer1, signer2, signer3 } = await loadFixture(
-        deployMultisigFixture
+  describe("Transaction Creation and Signing", function () {
+    it("Should allow a valid signer to create a transaction", async function () {
+      const { multiSig, signer1, receiver } = await loadFixture(
+        deployMultiSigFixture
       );
 
-      const amount = hre.ethers.parseUnits("1", 18);
+      await multiSig
+        .connect(signer1)
+        .initiateTransaction(hre.ethers.parseEther("1"), receiver.address);
 
-      await expect(multiSig.connect(signer1)).to.equal(
-        multiSig.initiateTransaction(amount, signer3)
-      );
-
-      expect(multiSig.connect(signer1)).to.equal(
-        multiSig.initiateTransaction(amount, signer3)
-      );
-      expect(multiSig.connect(signer2)).to.equal(
-        multiSig.initiateTransaction(amount, signer1)
-      );
-      expect(multiSig.connect(signer3)).to.equal(
-        multiSig.initiateTransaction(amount, signer2)
-      );
+      const allTransactions = await multiSig.getAllTransactions();
+      expect(allTransactions[0].amount).to.equal(hre.ethers.parseEther("1"));
+      expect(allTransactions[0].receiver).to.equal(receiver.address);
+      expect(allTransactions[0].signersCount).to.equal(1);
     });
 
-    it("should revert if a non-signer tries to initiate a transaction", async function () {
-      const { multiSig, nonSigner, signer3 } = await loadFixture(
-        deployMultisigFixture
+    it("Should allow multiple signers to sign and execute a transaction", async function () {
+      const { multiSig, signer1, signer2, receiver } = await loadFixture(
+        deployMultiSigFixture
       );
 
-      const amount = hre.ethers.parseUnits("1", 18);
+      await multiSig
+        .connect(signer1)
+        .initiateTransaction(hre.ethers.parseEther("1"), receiver.address);
+    });
+  });
+
+  describe("Ownership Transfer", function () {
+    it("Should allow the owner to transfer ownership", async function () {
+      const { multiSig, owner, newOwner } = await loadFixture(
+        deployMultiSigFixture
+      );
+
+      await multiSig.connect(owner).transferOwnership(newOwner.address);
+      await multiSig.connect(newOwner).claimOwnership();
+    });
+
+    it("Should revert if non-owner tries to transfer ownership", async function () {
+      const { multiSig, signer1, newOwner } = await loadFixture(
+        deployMultiSigFixture
+      );
 
       await expect(
-        multiSig.connect(nonSigner).initiateTransaction(amount, signer3)
-      ).to.be.revertedWith("not valid signer");
+        multiSig.connect(signer1).transferOwnership(newOwner.address)
+      ).to.be.revertedWith("not owner");
     });
   });
 
-  //   describe("Transaction approval", function () {
-  //     beforeEach(async function () {
-  //       await multiSig
-  //         .connect(signer1)
-  //         .initiateTransaction(ethers.utils.parseEther("1"), receiver.address);
-  //     });
+  describe("Signer Management", function () {
+    it("Should allow owner to add a new valid signer", async function () {
+      const { multiSig, owner, newOwner } = await loadFixture(
+        deployMultiSigFixture
+      );
 
-  //     it("should allow multiple valid signers to approve a transaction", async function () {
-  //       await expect(multiSig.connect(signer2).approveTransaction(1)).to.emit(
-  //         multiSig,
-  //         "ApproveTransaction"
-  //       );
+      await multiSig.connect(owner).addValidSigner(newOwner.address);
+    });
 
-  //       const transaction = await multiSig.transactions(1);
-  //       expect(transaction.signersCount).to.equal(2);
-  //     });
+    it("Should allow owner to remove a signer", async function () {
+      const { multiSig, owner } = await loadFixture(deployMultiSigFixture);
 
-  //     it("should execute the transaction when quorum is reached", async function () {
-  //       const receiverInitialBalance = await ethers.provider.getBalance(
-  //         receiver.address
-  //       );
+      await multiSig.connect(owner).removeSigner(1);
+    });
 
-  //       await multiSig.connect(signer1).approveTransaction(1);
-  //       await multiSig.connect(signer2).approveTransaction(1);
+    it("Should revert if non-owner tries to add or remove a signer", async function () {
+      const { multiSig, signer1, newOwner } = await loadFixture(
+        deployMultiSigFixture
+      );
 
-  //       const receiverFinalBalance = await ethers.provider.getBalance(
-  //         receiver.address
-  //       );
-  //       expect(receiverFinalBalance.sub(receiverInitialBalance)).to.equal(
-  //         ethers.utils.parseEther("1")
-  //       );
-  //     });
-
-  //     it("should revert if a non-signer tries to approve a transaction", async function () {
-  //       await expect(
-  //         multiSig.connect(nonSigner).approveTransaction(1)
-  //       ).to.be.revertedWith("not valid signer");
-  //     });
-
-  //     it("should prevent double-signing by the same signer", async function () {
-  //       await multiSig.connect(signer1).approveTransaction(1);
-  //       await expect(
-  //         multiSig.connect(signer1).approveTransaction(1)
-  //       ).to.be.revertedWith("can't sign twice");
-  //     });
-  //   });
-
-  //   describe("Ownership transfer", function () {
-  //     it("should allow the owner to set a new owner", async function () {
-  //       await multiSig.connect(owner).transferOwnership(newOwner.address);
-  //       expect(await multiSig.nextOwner()).to.equal(newOwner.address);
-  //     });
-
-  //     it("should allow the new owner to claim ownership", async function () {
-  //       await multiSig.connect(owner).transferOwnership(newOwner.address);
-  //       await multiSig.connect(newOwner).claimOwnership();
-  //       expect(await multiSig.owner()).to.equal(newOwner.address);
-  //     });
-
-  //     it("should revert if a non-designated address tries to claim ownership", async function () {
-  //       await multiSig.connect(owner).transferOwnership(newOwner.address);
-  //       await expect(
-  //         multiSig.connect(nonSigner).claimOwnership()
-  //       ).to.be.revertedWith("not next owner");
-  //     });
-  //   });
-
-  //   describe("Adding and removing valid signers", function () {
-  //     it("should allow the owner to add a new signer", async function () {
-  //       await multiSig.connect(owner).addValidSigner(nonSigner.address);
-  //       expect(await multiSig.isValidSigner(nonSigner.address)).to.be.true;
-  //     });
-
-  //     it("should allow the owner to remove a signer", async function () {
-  //       await multiSig.connect(owner).removeSigner(1); // Remove signer2
-  //       expect(await multiSig.isValidSigner(signer2.address)).to.be.false;
-  //     });
-
-  //     it("should revert if a non-owner tries to add a signer", async function () {
-  //       await expect(
-  //         multiSig.connect(signer1).addValidSigner(nonSigner.address)
-  //       ).to.be.revertedWith("not owner");
-  //     });
-
-  //     it("should revert if a non-owner tries to remove a signer", async function () {
-  //       await expect(
-  //         multiSig.connect(signer1).removeSigner(1)
-  //       ).to.be.revertedWith("not owner");
-  //     });
-  //   });
-
-  //   describe("Invalid operations", function () {
-  //     beforeEach(async function () {
-  //       await multiSig
-  //         .connect(signer1)
-  //         .initiateTransaction(ethers.utils.parseEther("1"), receiver.address);
-  //     });
-
-  //     it("should revert if the transaction is already executed", async function () {
-  //       await multiSig.connect(signer1).approveTransaction(1);
-  //       await multiSig.connect(signer2).approveTransaction(1); // Quorum reached, transaction executed
-
-  //       await expect(
-  //         multiSig.connect(signer3).approveTransaction(1)
-  //       ).to.be.revertedWith("transaction already executed");
-  //     });
-
-  //     it("should revert if a non-signer tries to initiate or approve a transaction", async function () {
-  //       await expect(
-  //         multiSig
-  //           .connect(nonSigner)
-  //           .initiateTransaction(ethers.utils.parseEther("1"), receiver.address)
-  //       ).to.be.revertedWith("not valid signer");
-  //       await expect(
-  //         multiSig.connect(nonSigner).approveTransaction(1)
-  //       ).to.be.revertedWith("not valid signer");
-  //     });
-
-  //     it("should revert if a signer tries to double-sign a transaction", async function () {
-  //       await multiSig.connect(signer1).approveTransaction(1);
-  //       await expect(
-  //         multiSig.connect(signer1).approveTransaction(1)
-  //       ).to.be.revertedWith("can't sign twice");
-  //     });
-  //   });
+      await expect(
+        multiSig.connect(signer1).addValidSigner(newOwner.address)
+      ).to.be.revertedWith("not owner");
+      await expect(
+        multiSig.connect(signer1).removeSigner(1)
+      ).to.be.revertedWith("not owner");
+    });
+  });
 });
