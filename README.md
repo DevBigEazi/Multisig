@@ -38,3 +38,4 @@ The MultiSig (Multi-Signature) wallet works more like a bank vault that requires
 ## Here is the screenshort of the scripting moments....
 
 
+<img width="960" alt="multisig_script" src="https://github.com/user-attachments/assets/b8532cdc-9763-4e71-98bb-c785cec756c5" />
