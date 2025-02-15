@@ -46,15 +46,15 @@ contract MultiSig {
 
         uint256 _txId = txCount + 1;
 
-        Transaction storage tns = transactions[_txId];
+        Transaction storage txs = transactions[_txId];
 
-        tns.id = _txId;
-        tns.amount = _amount;
-        tns.receiver = _receiver;
-        tns.signersCount = tns.signersCount + 1;
-        tns.txCreator = msg.sender;
+        txs.id = _txId;
+        txs.amount = _amount;
+        txs.receiver = _receiver;
+        txs.signersCount = txs.signersCount + 1;
+        txs.txCreator = msg.sender;
 
-        allTransactions.push(tns);
+        allTransactions.push(txs);
 
         hasSigned[_txId][msg.sender] = true;
 
@@ -68,22 +68,22 @@ contract MultiSig {
         onlyValidSigner();
 
         require(!hasSigned[_txId][msg.sender], "can't sign twice");
-        Transaction storage tns = transactions[_txId];
+        Transaction storage txs = transactions[_txId];
         require(
-            address(this).balance >= tns.amount,
+            address(this).balance >= txs.amount,
             "insufficient contract balance"
         );
 
-        require(!tns.isExecuted, "transaction already executed");
-        require(tns.signersCount < quorum, "quorum count reached");
+        require(!txs.isExecuted, "transaction already executed");
+        require(txs.signersCount < quorum, "quorum count reached");
 
-        tns.signersCount = tns.signersCount + 1;
+        txs.signersCount = txs.signersCount + 1;
 
         hasSigned[_txId][msg.sender] = true;
 
-        if (tns.signersCount == quorum) {
-            tns.isExecuted = true;
-            payable(tns.receiver).transfer(tns.amount);
+        if (txs.signersCount == quorum) {
+            txs.isExecuted = true;
+            payable(txs.receiver).transfer(txs.amount);
         }
     }
 
